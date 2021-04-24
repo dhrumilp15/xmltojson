@@ -73,14 +73,13 @@ def get_node_content(node: ET.Element) -> dict:
     Returns:
         A dict of the node's attributes and text.
     '''
-    tag = xml_tag_to_json_tag(node.tag)
     # `content` holds attribute and text information of the current node.
     content = {}
 
     if node.attrib:
         # Prepend attributes' keys with "@".
         content = {
-            "@" + key: text_to_value(text) for key,
+            "@" + xml_tag_to_json_tag(key): text_to_value(text) for key,
             text in node.attrib.items()}
 
     if node.text:
@@ -146,6 +145,18 @@ def get_root_from_xml(file: str) -> ET.Element:
     return ET.parse(file).getroot()
 
 
+def root_to_dict(root: ET.Element) -> dict:
+    '''Converts a root to its corresponding dict.
+
+    Args:
+        root: The root of the xml.
+
+    Returns:
+        A dict of the xml.
+    '''
+    return {xml_tag_to_json_tag(root.tag): parse_xml(root)}
+
+
 def main(files: list) -> None:
     """A driver function to convert XMLs to JSONs
 
@@ -168,7 +179,7 @@ def main(files: list) -> None:
             print("Usage: python seatmap_parser.py [FILENAMES.xml] ...")
             continue
 
-        xml_converted_to_dict = {xml_tag_to_json_tag(root.tag): parse_xml(root)}
+        xml_converted_to_dict = root_to_dict(root)
 
         with open(outfile, "w") as file_ptr:
             json.dump(xml_converted_to_dict, fp=file_ptr, indent=4)

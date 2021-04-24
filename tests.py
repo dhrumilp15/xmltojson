@@ -1,52 +1,32 @@
 import xml.etree.ElementTree as ET
-import pytest
-from seatmap_parser import parse_xml, get_root_from_xml
-from io import BytesIO
-
-
-def encode(s):
-    try:
-        return bytes(s, 'ascii')
-    except (NameError, TypeError):
-        return s
+from seatmap_parser import root_to_dict
 
 
 def package(s):
-    return ET.parse(s)
+    return ET.fromstring(s)
 
 
 def test_minimal():
-    assert parse_xml(package('</a>')) == {'a': None}
+    assert root_to_dict(package('<a></a>')) == {'a': None}
 
 
 def test_simple():
-    assert parse_xml(package('<a>data</a>')) == {'a': {'#text': 'data'}}
+    assert root_to_dict(package('<a>data</a>')) == {'a': 'data'}
 
 
 def test_list():
-    assert parse_xml(package('<a><b>1</b><b>2</b><b>3</b></a>')
-                     ) == {'a': {'b': [1, 2, 3]}}
+    assert root_to_dict(package('<a><b>1</b><b>2</b><b>3</b></a>')
+                        ) == {'a': {'b': [1, 2, 3]}}
 
 
 def test_attrib():
-    assert parse_xml(package('<a href="xyz"/>')
-                     ) == {'a': {'@href': 'xyz'}}
+    assert root_to_dict(package('<a href="xyz"/>')
+                        ) == {'a': {'@href': 'xyz'}}
 
 
 def test_attrib_and_cdata():
-    assert parse_xml(package('<a href="xyz">123</a>')
-                     ) == {'a': {'@href': 'xyz', '#text': 123}}
-
-
-def test_semi_structured():
-    assert parse_xml(package('<a>abc<b/>def</a>')
-                     ) == {'a': {'b': None, '#text': 'abcdef'}}
-
-
-def test_nested_semi_structured():
-    assert parse_xml(package('<a>abc<b>123<c/>456</b>def</a>')
-                     ) == {'a': {'#text': 'abcdef', 'b': {
-                         '#text': 123456, 'c': None}}}
+    assert root_to_dict(package('<a href="xyz">123</a>')
+                        ) == {'a': {'@href': 'xyz', '#text': 123}}
 
 
 def test_skip_whitespace():
@@ -58,7 +38,7 @@ def test_skip_whitespace():
           <value>hello</value>
         </root>
     """
-    assert parse_xml(
+    assert root_to_dict(
         package(xml)) == {
         'root': {
             'emptya': None,
@@ -77,7 +57,8 @@ def test_namespace_support():
           <b:z>3</b:z>
         </root>
         """
-    d = {
+    res = root_to_dict(package(xml))
+    assert res == {
         'http://defaultns.com/:root': {
             'http://defaultns.com/:x': {
                 '@http://a.com/:attr': 'val',
@@ -87,5 +68,3 @@ def test_namespace_support():
             'http://b.com/:z': 3,
         }
     }
-    res = parse_xml(package(xml))
-    assert res == d
