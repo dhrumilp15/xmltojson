@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 import re
 import os
 from typing import Any
+from collections.abc import Iterable
 
 ALPHANUMERIC = r"[A-Za-z1-9]+"
 
@@ -63,64 +64,75 @@ def text_to_value(text: str) -> Any:
         return text
 
 
-def parse_xml(root: ET.Element) -> dict:
-    """Converts the XML from the root to a dict recursively.
+def get_node_content(node: ET.Element) -> dict:
+    '''Retrieves a node's attributes and text as a dict.
 
     Args:
-        parent: A dict that holds the converted xml.
+        root: The current node in the XML structure.
 
     Returns:
-        A dict that represents the xml's contents.
-    """
-
-    tag = xml_tag_to_json_tag(root.tag)
-
+        A dict of the node's attributes and text.
+    '''
+    tag = xml_tag_to_json_tag(node.tag)
     # `content` holds attribute and text information of the current node.
-    content = {tag: {}}
+    content = {}
 
-    if root.attrib:
+    if node.attrib:
         # Prepend attributes' keys with "@".
-        content[tag] = {
-            "@" + key: text_to_value(text) for key, text in root.attrib.items()
-        }
+        content = {
+            "@" + key: text_to_value(text) for key,
+            text in node.attrib.items()}
 
-    if root.text:
-        converted_text = text_to_value(root.text)
+    if node.text:
+        converted_text = text_to_value(node.text)
         if converted_text:
-            if content[tag]:
+            if content:
                 # Prepend text key with "#" only if attributes exist.
-                content[tag]["#text"] = converted_text
+                content["#text"] = converted_text
             else:
                 # If there are no attributes, this node only holds text
                 # information.
-                content[tag] = converted_text
+                content = converted_text
+    return content
+
+
+def parse_xml(root: ET.Element) -> dict:
+    """Recursively converts the XML to a dict.
+
+    Args:
+        root: An ET.Element that represents the root of the xml.
+
+    Returns:
+        A dict of the xml's contents.
+    """
 
     # Store the information at the current node in the parent
+    content = get_node_content(root)
     if root:
         # Let's use a look-ahead to determine whether we want to use a list or a
-        # dict to store the children.
+        # dict to store a children.
         for child in root:
             child_tag = xml_tag_to_json_tag(child.tag)
             # Store this child as a list if there are duplicates. Otherwise,
             # we'll use a dict.
-            if child_tag in content[tag]:
-                content[tag][child_tag] = []
+            if child_tag in content:
+                content[child_tag] = []
             else:
-                content[tag][child_tag] = {}
-        # With look-ahead, insert the values of children into
-        # the appropriate root structure
+                content[child_tag] = {}
+        # Using the look-ahead, insert the values of children into
+        # the appropriate root structure.
         for child in root:
-            child_tag = xml_tag_to_json_tag(child.tag)
             value = parse_xml(child)
-            if isinstance(content[tag][child_tag], list):
-                content[tag][child_tag].append(value)
+            child_tag = xml_tag_to_json_tag(child.tag)
+            if isinstance(content[child_tag], list):
+                content[child_tag].append(value)
             else:
-                content[tag][child_tag] = value
+                content[child_tag] = value
     # If recursion returns an empty iterable, the current node has no
-    # information.
-    if content[tag] in ({}, [], ""):
+    # child information.
+    if isinstance(content, Iterable) and not content:
         return None
-    return content[tag]
+    return content
 
 
 def get_root_from_xml(file: str) -> ET.Element:
@@ -142,11 +154,24 @@ def main(files: list) -> None:
     """
 
     for file in files:
+        # We try to parse as many xmls as possible.
+        if not os.path.exists(file):
+            print("{} can't be found.".format(file))
+            print("Usage: python seatmap_parser.py [FILENAMES.xml] ...")
+            continue
+
         outfile = os.path.splitext(file)[0] + "_parsed.json"
-        root = get_root_from_xml(file)
+        try:
+            root = get_root_from_xml(file)
+        except ET.ParseError:
+            print("{} cannot be parsed." .format(file))
+            print("Usage: python seatmap_parser.py [FILENAMES.xml] ...")
+            continue
+
         xml_converted_to_dict = {xml_tag_to_json_tag(root.tag): parse_xml(root)}
-        with open(outfile, "w") as file_pointer:
-            json.dump(xml_converted_to_dict, fp=file_pointer, indent=4)
+
+        with open(outfile, "w") as file_ptr:
+            json.dump(xml_converted_to_dict, fp=file_ptr, indent=4)
 
 
 def parse_args() -> list:
@@ -156,11 +181,12 @@ def parse_args() -> list:
     Returns:
         A list of XML filenames to be converted to jsons.
     """
-    parser = argparse.ArgumentParser(description="Process a list of XML files.")
-    parser.add_argument(
+    argparser = argparse.ArgumentParser(
+        description="Process a list of XML files.")
+    argparser.add_argument(
         "xml_file", nargs="+", type=str, help="The locations of your XML files"
     )
-    return parser.parse_args().xml_file
+    return argparser.parse_args().xml_file
 
 
 if __name__ == "__main__":
